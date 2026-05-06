@@ -3,581 +3,571 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IoT Gas Leakage Detection System</title>
+  <title>GasGuard — IoT Gas Detection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
-    * {
+    *, *::before, *::after {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
 
+    :root {
+      --bg:           #04060c;
+      --surface:      #080d17;
+      --surface-2:    #0c1220;
+      --border:       #151e2e;
+      --border-2:     #1e2d42;
+      --text:         #dde4f0;
+      --text-2:       #7a8fa8;
+      --text-3:       #3d4f63;
+      --accent:       #2563eb;
+      --accent-dim:   rgba(37, 99, 235, 0.12);
+      --accent-ring:  rgba(37, 99, 235, 0.28);
+      --green:        #10b981;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    /* ── Keyframes ──────────────────────────────────────── */
+    @keyframes blur-rise {
+      from { opacity: 0; filter: blur(7px); transform: translateY(14px); }
+      to   { opacity: 1; filter: blur(0px); transform: translateY(0); }
+    }
+    @keyframes drift-a {
+      0%, 100% { transform: translate(0px,  0px)   scale(1);    }
+      33%       { transform: translate(28px, -20px) scale(1.04); }
+      66%       { transform: translate(-14px, 16px) scale(0.97); }
+    }
+    @keyframes drift-b {
+      0%, 100% { transform: translate(0px,   0px)  scale(1);    }
+      40%       { transform: translate(-22px, 20px) scale(1.03); }
+      72%       { transform: translate(18px, -12px) scale(0.98); }
+    }
+
+    /* ── Scroll reveal ──────────────────────────────────── */
+    [data-reveal] {
+      opacity: 0;
+      transform: translateY(16px);
+      transition:
+        opacity  0.65s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+      transition-delay: var(--stagger, 0ms);
+      will-change: transform, opacity;
+    }
+    [data-reveal].visible {
+      opacity: 1;
+      transform: translateY(0);
+      will-change: auto;
+    }
+
     body {
-      font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: #0a0e1a;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      background: var(--bg);
       min-height: 100vh;
-      color: #e2e8f0;
+      color: var(--text);
       overflow-x: hidden;
-      position: relative;
+      -webkit-font-smoothing: antialiased;
     }
 
-    body::before {
-      content: '';
+    /* ── Ambient light ──────────────────────────────────── */
+    .ambient {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: 
-        radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
-        radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
-        radial-gradient(circle at 40% 60%, rgba(236, 72, 153, 0.1) 0%, transparent 50%);
-      z-index: 0;
+      inset: 0;
       pointer-events: none;
-    }
-
-    /* Animated background particles */
-    .particles {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      z-index: 0;
       overflow: hidden;
-      z-index: 0;
-      pointer-events: none;
     }
-
-    .particle {
+    .orb {
       position: absolute;
       border-radius: 50%;
-      filter: blur(1px);
-      animation: float 15s infinite ease-in-out;
+      filter: blur(110px);
+    }
+    .orb-1 {
+      width: 700px; height: 500px;
+      background: radial-gradient(ellipse, rgba(37,99,235,0.18) 0%, transparent 70%);
+      top: -180px; right: -120px;
+      animation: drift-a 22s ease-in-out infinite;
+    }
+    .orb-2 {
+      width: 500px; height: 500px;
+      background: radial-gradient(ellipse, rgba(14,165,233,0.08) 0%, transparent 70%);
+      bottom: -100px; left: -80px;
+      animation: drift-b 28s ease-in-out infinite;
     }
 
-    .particle:nth-child(odd) {
-      width: 3px;
-      height: 3px;
-      background: rgba(59, 130, 246, 0.4);
+    /* ── Nav ────────────────────────────────────────────── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(4, 6, 12, 0.82);
+      backdrop-filter: blur(14px) saturate(160%);
+      border-bottom: 1px solid var(--border);
+      transition: box-shadow 0.35s ease, border-color 0.35s ease;
     }
-
-    .particle:nth-child(even) {
-      width: 5px;
-      height: 5px;
-      background: rgba(139, 92, 246, 0.3);
+    nav.elevated {
+      box-shadow: 0 1px 30px rgba(0,0,0,0.6);
+      border-color: var(--border-2);
     }
-
-    .particle:nth-child(3n) {
-      width: 2px;
-      height: 2px;
-      background: rgba(236, 72, 153, 0.35);
-    }
-
-    @keyframes float {
-      0% { transform: translateY(100vh) translateX(0) rotate(0deg); opacity: 0; }
-      10% { opacity: 1; }
-      90% { opacity: 0.8; }
-      100% { transform: translateY(-100vh) translateX(100px) rotate(360deg); opacity: 0; }
-    }
-
-    .container {
-      max-width: 1200px;
+    .nav-inner {
+      max-width: 1120px;
       margin: 0 auto;
-      padding: 40px 20px;
+      padding: 0 32px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .nav-logo {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .nav-name {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.025em;
+    }
+    .nav-pill {
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #60a5fa;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent-ring);
+      border-radius: 99px;
+      padding: 3px 9px;
+    }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 32px;
       position: relative;
       z-index: 1;
     }
 
-    /* Header Section */
-    .header {
-      text-align: center;
-      margin-bottom: 60px;
-      animation: fadeInDown 1s ease-out;
+    hr.rule {
+      border: none;
+      border-top: 1px solid var(--border);
     }
 
-    @keyframes fadeInDown {
-      from {
-        opacity: 0;
-        transform: translateY(-30px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
+    /* ── Hero ───────────────────────────────────────────── */
+    .hero { padding: 110px 0 88px; }
 
-    .logo {
+    .eyebrow {
       display: inline-flex;
       align-items: center;
-      gap: 15px;
-      margin-bottom: 20px;
+      gap: 8px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #60a5fa;
+      margin-bottom: 26px;
+      animation: blur-rise 0.72s cubic-bezier(0.22,1,0.36,1) 0.05s both;
+    }
+    .eyebrow-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
     }
 
-    .logo-icon {
-      width: 80px;
-      height: 80px;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899);
-      border-radius: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 35px;
-      animation: pulse 2s infinite;
-      box-shadow: 0 15px 50px rgba(59, 130, 246, 0.5), 0 0 30px rgba(139, 92, 246, 0.3);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .logo-icon::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      left: -50%;
-      width: 200%;
-      height: 200%;
-      background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
-      animation: shimmer 3s infinite;
-    }
-
-    @keyframes shimmer {
-      0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
-      100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
-    }
-
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); box-shadow: 0 10px 40px rgba(59, 130, 246, 0.4); }
-      50% { transform: scale(1.05); box-shadow: 0 15px 50px rgba(59, 130, 246, 0.6); }
-    }
-
-    h1 {
-      font-size: 3.5rem;
+    h1.hero-title {
+      font-size: clamp(2.2rem, 5.5vw, 3.8rem);
       font-weight: 800;
-      background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #f472b6 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin-bottom: 10px;
-      letter-spacing: -2px;
-      text-shadow: 0 0 40px rgba(59, 130, 246, 0.3);
-      position: relative;
+      color: #edf2ff;
+      letter-spacing: -0.04em;
+      line-height: 1.08;
+      margin-bottom: 24px;
+      max-width: 660px;
+      animation: blur-rise 0.72s cubic-bezier(0.22,1,0.36,1) 0.18s both;
+    }
+    h1.hero-title em {
+      font-style: normal;
+      color: var(--text-2);
+      font-weight: 400;
     }
 
-    .subtitle {
-      font-size: 1.2rem;
-      color: #94a3b8;
-      font-weight: 300;
+    .hero-body {
+      font-size: 1rem;
+      color: var(--text-2);
+      line-height: 1.72;
+      max-width: 480px;
+      margin-bottom: 44px;
+      font-weight: 400;
+      animation: blur-rise 0.72s cubic-bezier(0.22,1,0.36,1) 0.3s both;
     }
 
-    /* Info Cards */
-    .info-grid {
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 22px;
+      border-radius: 9px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.18s, transform 0.15s, box-shadow 0.18s;
+      animation: blur-rise 0.72s cubic-bezier(0.22,1,0.36,1) 0.4s both;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06);
+    }
+    .btn-primary:hover {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(37,99,235,0.38);
+    }
+    .btn-primary i { font-size: 0.75rem; }
+
+    /* ── Section header ─────────────────────────────────── */
+    .section { padding: 80px 0; }
+
+    .label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: clamp(1.35rem, 2.8vw, 1.85rem);
+      font-weight: 700;
+      color: #e8edf8;
+      letter-spacing: -0.03em;
+      margin-bottom: 44px;
+    }
+
+    /* ── Info Cards ─────────────────────────────────────── */
+    .card-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 30px;
-      margin-bottom: 50px;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 14px;
     }
 
-    .info-card {
-      background: rgba(15, 23, 42, 0.6);
-      backdrop-filter: blur(20px) saturate(180%);
-      border: 1px solid rgba(59, 130, 246, 0.3);
-      border-radius: 24px;
-      padding: 35px;
-      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-      animation: fadeInUp 1s ease-out;
-      animation-fill-mode: both;
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px 28px 30px;
+      transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
       position: relative;
       overflow: hidden;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     }
-
-    .info-card::after {
+    .card::after {
       content: '';
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.5), transparent);
-      opacity: 0;
-      transition: opacity 0.4s;
+      bottom: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, var(--accent), rgba(37,99,235,0.3));
+      transform: scaleX(0);
+      transform-origin: left center;
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
     }
-
-    .info-card:hover::after {
-      opacity: 1;
-    }
-
-    .info-card::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      left: -50%;
-      width: 200%;
-      height: 200%;
-      background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
-      opacity: 0;
-      transition: opacity 0.4s;
-    }
-
-    .info-card:hover::before {
-      opacity: 1;
-    }
-
-    .info-card:nth-child(2) {
-      animation-delay: 0.2s;
-    }
-
-    .info-card:nth-child(3) {
-      animation-delay: 0.4s;
-    }
-
-    @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translateY(30px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .info-card:hover {
-      transform: translateY(-12px) scale(1.02);
-      border-color: rgba(59, 130, 246, 0.6);
-      box-shadow: 0 25px 70px rgba(59, 130, 246, 0.4), 0 0 40px rgba(139, 92, 246, 0.2);
+    .card:hover::after { transform: scaleX(1); }
+    .card:hover {
+      border-color: var(--border-2);
+      transform: translateY(-3px);
+      box-shadow: 0 14px 44px rgba(0,0,0,0.45);
     }
 
     .card-icon {
-      width: 70px;
-      height: 70px;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-      border-radius: 18px;
+      width: 40px; height: 40px;
+      border-radius: 9px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 32px;
-      margin-bottom: 20px;
-      box-shadow: 0 15px 35px rgba(59, 130, 246, 0.4);
-      position: relative;
-      transition: transform 0.3s ease;
+      font-size: 16px;
+      color: #60a5fa;
+      margin-bottom: 18px;
+      transition: border-color 0.22s;
     }
+    .card:hover .card-icon { border-color: var(--accent-ring); }
 
-    .info-card:hover .card-icon {
-      transform: scale(1.1) rotate(5deg);
-    }
-
-    .card-icon::before {
-      content: '';
-      position: absolute;
-      inset: -2px;
-      background: linear-gradient(135deg, #60a5fa, #a78bfa);
-      border-radius: 18px;
-      z-index: -1;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    .info-card:hover .card-icon::before {
-      opacity: 1;
-    }
-
-    .info-card h3 {
-      font-size: 1.5rem;
-      margin-bottom: 15px;
-      color: #f1f5f9;
-    }
-
-    .info-card p {
-      color: #94a3b8;
-      line-height: 1.6;
-      margin-bottom: 15px;
-    }
-
-    .info-card code {
-      background: rgba(15, 23, 42, 0.6);
-      color: #3b82f6;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-family: 'Courier New', monospace;
-      font-size: 0.9rem;
-      border: 1px solid rgba(59, 130, 246, 0.3);
-    }
-
-    /* Features Section */
-    .features {
-      margin-top: 60px;
-      animation: fadeInUp 1s ease-out 0.6s both;
-    }
-
-    .features h2 {
-      text-align: center;
-      font-size: 2.5rem;
-      margin-bottom: 40px;
-      color: #f1f5f9;
-    }
-
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 25px;
-    }
-
-    .feature-item {
-      background: rgba(15, 23, 42, 0.5);
-      backdrop-filter: blur(15px) saturate(180%);
-      border: 1px solid rgba(59, 130, 246, 0.2);
-      border-radius: 20px;
-      padding: 30px;
-      text-align: center;
-      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .feature-item::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: radial-gradient(circle at center, rgba(59, 130, 246, 0.1), transparent 70%);
-      opacity: 0;
-      transition: opacity 0.4s;
-    }
-
-    .feature-item:hover::before {
-      opacity: 1;
-    }
-
-    .feature-item:hover {
-      border-color: rgba(59, 130, 246, 0.5);
-      transform: translateY(-8px);
-      background: rgba(15, 23, 42, 0.8);
-      box-shadow: 0 20px 50px rgba(59, 130, 246, 0.3);
-    }
-
-    .feature-icon {
-      font-size: 3rem;
-      margin-bottom: 15px;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      transition: transform 0.3s ease;
-    }
-
-    .feature-item:hover .feature-icon {
-      transform: scale(1.2) rotateY(360deg);
-    }
-
-    .feature-item h4 {
-      font-size: 1.2rem;
-      margin-bottom: 10px;
-      color: #f1f5f9;
-    }
-
-    .feature-item p {
-      color: #94a3b8;
+    .card h3 {
       font-size: 0.95rem;
-    }
-
-    /* Responsive */
-    @media (max-width: 768px) {
-      h1 {
-        font-size: 2rem;
-      }
-
-      .subtitle {
-        font-size: 1rem;
-      }
-
-      .info-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .features h2 {
-        font-size: 2rem;
-      }
-
-      .container {
-        padding: 20px 15px;
-      }
-    }
-
-    /* Glow effect */
-    @keyframes glow {
-      0%, 100% { filter: drop-shadow(0 0 5px rgba(59, 130, 246, 0.5)); }
-      50% { filter: drop-shadow(0 0 20px rgba(59, 130, 246, 0.8)); }
-    }
-
-    .glow {
-      animation: glow 3s infinite;
-    }
-
-    /* Footer */
-    .footer {
-      margin-top: 80px;
-      padding: 40px 20px;
-      text-align: center;
-      border-top: 1px solid rgba(59, 130, 246, 0.2);
-      animation: fadeIn 1s ease-out 0.8s both;
-    }
-
-    .footer-content {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    .footer-text {
-      font-size: 1.1rem;
-      color: #94a3b8;
+      font-weight: 700;
+      color: #e8edf8;
       margin-bottom: 10px;
+      letter-spacing: -0.02em;
+    }
+    .card p {
+      font-size: 0.845rem;
+      color: var(--text-2);
+      line-height: 1.65;
+      margin-bottom: 14px;
+    }
+    .card p:last-child { margin-bottom: 0; }
+
+    .mono {
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      font-size: 0.78rem;
+      color: #93c5fd;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 4px 9px;
+      border-radius: 5px;
+      letter-spacing: -0.01em;
+    }
+
+    /* ── Feature Grid ───────────────────────────────────── */
+    .feat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      gap: 1px;
+      background: var(--border);
+    }
+    .feat-cell {
+      background: var(--surface);
+      padding: 30px 26px;
+      transition: background 0.2s;
+    }
+    .feat-cell:hover { background: var(--surface-2); }
+
+    .feat-num {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--text-3);
+      margin-bottom: 18px;
+    }
+    .feat-icon {
+      font-size: 1.2rem;
+      color: #60a5fa;
+      margin-bottom: 12px;
+    }
+    .feat-cell h4 {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #e8edf8;
+      margin-bottom: 7px;
+      letter-spacing: -0.01em;
+    }
+    .feat-cell p {
+      font-size: 0.8rem;
+      color: var(--text-2);
+      line-height: 1.6;
+    }
+
+    /* ── Footer ─────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+    }
+    .footer-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 32px;
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: space-between;
       flex-wrap: wrap;
+      gap: 12px;
+    }
+    .footer-copy {
+      font-size: 0.8rem;
+      color: var(--text-3);
+    }
+    .footer-team {
+      font-size: 0.8rem;
+      color: var(--text-3);
+      display: flex;
+      align-items: center;
       gap: 5px;
+      flex-wrap: wrap;
     }
-
-    .footer-text i {
-      animation: heartbeat 1.5s infinite;
-    }
-
-    @keyframes heartbeat {
-      0%, 100% { transform: scale(1); }
-      10%, 30% { transform: scale(1.2); }
-      20%, 40% { transform: scale(1); }
-    }
-
-    .team-name {
-      color: #3b82f6;
-      font-weight: 600;
-      transition: all 0.3s ease;
+    .footer-team b {
+      font-weight: 500;
+      color: var(--text-2);
       cursor: default;
+      transition: color 0.18s;
     }
+    .footer-team b:hover { color: var(--text); }
 
-    .team-name:hover {
-      color: #8b5cf6;
-      text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+    /* ── Responsive ─────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .feat-grid { grid-template-columns: repeat(2, 1fr); }
     }
-
-    .footer-year {
-      font-size: 0.9rem;
-      color: #64748b;
-      margin-top: 10px;
-    }
-
-    @media (max-width: 768px) {
-      .footer-text {
-        font-size: 0.95rem;
-      }
+    @media (max-width: 640px) {
+      .hero { padding: 72px 0 60px; }
+      .section { padding: 60px 0; }
+      .container { padding: 0 20px; }
+      .nav-inner { padding: 0 20px; }
+      .footer-inner { padding: 0 20px; justify-content: center; text-align: center; }
+      .feat-grid { grid-template-columns: 1fr; }
+      h1.hero-title { font-size: 2rem; }
     }
   </style>
 </head>
 <body>
-  <!-- Animated particles background -->
-  <div class="particles" id="particles"></div>
 
-  <div class="container">
-    <!-- Header -->
-    <div class="header">
-      <div class="logo">
-        <div class="logo-icon glow">
-          <i class="fas fa-wind"></i>
-        </div>
-      </div>
-      <h1>IoT Gas Leakage Detection System</h1>
-      <p class="subtitle">Real-time monitoring & intelligent alerts for industrial safety</p>
-    </div>
-
-    <!-- Info Cards -->
-    <div class="info-grid">
-      <div class="info-card">
-        <div class="card-icon">
-          <i class="fas fa-gauge-high"></i>
-        </div>
-        <h3>Device Dashboard</h3>
-        <p>Access real-time gas monitoring data for your devices</p>
-        <p>Navigate to: <code>/dashboard/&lt;deviceId&gt;</code></p>
-      </div>
-
-      <div class="info-card">
-        <div class="card-icon">
-          <i class="fas fa-plug"></i>
-        </div>
-        <h3>Device Registration</h3>
-        <p>IoT devices automatically register via API endpoint</p>
-        <p>Endpoint: <code>POST /api/register</code></p>
-      </div>
-
-      <div class="info-card">
-        <div class="card-icon">
-          <i class="fas fa-bell"></i>
-        </div>
-        <h3>Smart Alerts</h3>
-        <p>Receive instant notifications via Telegram when gas levels exceed safe thresholds</p>
-      </div>
-    </div>
-
-    <!-- Features Section -->
-    <div class="features">
-      <h2>System Features</h2>
-      <div class="features-grid">
-        <div class="feature-item">
-          <div class="feature-icon"><i class="fas fa-chart-line"></i></div>
-          <h4>Live Monitoring</h4>
-          <p>Real-time gas level tracking with visual charts</p>
-        </div>
-
-        <div class="feature-item">
-          <div class="feature-icon"><i class="fas fa-cloud"></i></div>
-          <h4>Cloud Connected</h4>
-          <p>WebSocket-based instant data synchronization</p>
-        </div>
-
-        <div class="feature-item">
-          <div class="feature-icon"><i class="fas fa-shield-halved"></i></div>
-          <h4>Safety First</h4>
-          <p>Automated alerts for hazardous conditions</p>
-        </div>
-
-        <div class="feature-item">
-          <div class="feature-icon"><i class="fas fa-mobile-screen"></i></div>
-          <h4>Responsive Design</h4>
-          <p>Access from any device, anywhere</p>
-        </div>
-      </div>
-    </div>
+  <div class="ambient" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
   </div>
 
-  <script>
-    // Create animated particles
-    const particlesContainer = document.getElementById('particles');
-    const particleCount = 50;
+  <!-- Nav -->
+  <nav>
+    <div class="nav-inner">
+      <a class="nav-brand" href="/">
+        <div class="nav-logo"><i class="fas fa-wind"></i></div>
+        <span class="nav-name">GasGuard</span>
+      </a>
+      <span class="nav-pill">IoT Platform</span>
+    </div>
+  </nav>
 
-    for (let i = 0; i < particleCount; i++) {
-      const particle = document.createElement('div');
-      particle.className = 'particle';
-      particle.style.left = Math.random() * 100 + '%';
-      particle.style.animationDelay = Math.random() * 15 + 's';
-      particle.style.animationDuration = (15 + Math.random() * 10) + 's';
-      particlesContainer.appendChild(particle);
-    }
-  </script>
+  <!-- Hero -->
+  <div class="container">
+    <section class="hero">
+      <div class="eyebrow">
+        <span class="eyebrow-dot"></span>
+        Real-time industrial monitoring
+      </div>
+      <h1 class="hero-title">Gas Leakage<br><em>Detection System</em></h1>
+      <p class="hero-body">Continuous monitoring of hazardous gas levels with live sensor data, instant alerts, and automated safety responses.</p>
+      <a href="#endpoints" class="btn btn-primary">
+        View endpoints <i class="fas fa-arrow-down"></i>
+      </a>
+    </section>
+  </div>
+
+  <hr class="rule">
+
+  <!-- Endpoints -->
+  <div class="container" id="endpoints">
+    <section class="section">
+      <p class="label" data-reveal>Access points</p>
+      <h2 class="section-title" data-reveal style="--stagger:60ms">System Endpoints</h2>
+      <div class="card-grid">
+
+        <div class="card" data-reveal style="--stagger:120ms">
+          <div class="card-icon"><i class="fas fa-gauge-high"></i></div>
+          <h3>Device Dashboard</h3>
+          <p>Access live gas level charts, status indicators, and historical data for any registered device.</p>
+          <code class="mono">/dashboard/&lt;deviceId&gt;</code>
+        </div>
+
+        <div class="card" data-reveal style="--stagger:200ms">
+          <div class="card-icon"><i class="fas fa-plug"></i></div>
+          <h3>Device Registration</h3>
+          <p>IoT devices auto-register and authenticate via API on first connection — no manual configuration needed.</p>
+          <code class="mono">POST /api/register</code>
+        </div>
+
+        <div class="card" data-reveal style="--stagger:280ms">
+          <div class="card-icon"><i class="fab fa-telegram"></i></div>
+          <h3>Telegram Alerts</h3>
+          <p>Get instant push notifications the moment gas concentrations exceed safe thresholds for your device.</p>
+        </div>
+
+      </div>
+    </section>
+  </div>
+
+  <hr class="rule">
+
+  <!-- Features -->
+  <div class="container">
+    <section class="section">
+      <p class="label" data-reveal>Capabilities</p>
+      <h2 class="section-title" data-reveal style="--stagger:60ms">What the system does</h2>
+      <div class="feat-grid" data-reveal style="--stagger:140ms">
+
+        <div class="feat-cell">
+          <p class="feat-num">01</p>
+          <div class="feat-icon"><i class="fas fa-chart-line"></i></div>
+          <h4>Live Monitoring</h4>
+          <p>Rolling 60-point charts with real-time gas level tracking.</p>
+        </div>
+
+        <div class="feat-cell">
+          <p class="feat-num">02</p>
+          <div class="feat-icon"><i class="fas fa-bolt"></i></div>
+          <h4>Instant Sync</h4>
+          <p>WebSocket-based streaming with zero-delay sensor updates.</p>
+        </div>
+
+        <div class="feat-cell">
+          <p class="feat-num">03</p>
+          <div class="feat-icon"><i class="fas fa-shield-halved"></i></div>
+          <h4>Anomaly Detection</h4>
+          <p>Automated alerts for hazardous spikes and irregular patterns.</p>
+        </div>
+
+        <div class="feat-cell">
+          <p class="feat-num">04</p>
+          <div class="feat-icon"><i class="fas fa-mobile-screen"></i></div>
+          <h4>Works Everywhere</h4>
+          <p>Fully responsive — monitor from any device, anywhere.</p>
+        </div>
+
+      </div>
+    </section>
+  </div>
 
   <!-- Footer -->
-  <footer class="footer">
-    <div class="footer-content">
-      <p class="footer-text">
-        Made with <i class="fas fa-heart" style="color: #ef4444;"></i> by 
-        <span class="team-name">Darshan Tank</span>, 
-        <span class="team-name">Kanav Trivedi</span>, 
-        <span class="team-name">Tushar Surti</span>
-      </p>
-      <p class="footer-year">© 2025 IoT Gas Leakage Detection System</p>
+  <footer data-reveal>
+    <div class="footer-inner">
+      <span class="footer-copy">© 2025 IoT Gas Leakage Detection System</span>
+      <div class="footer-team">
+        Built by
+        <b>Darshan Tank</b>,
+        <b>Kanav Trivedi</b>,
+        <b>Tushar Surti</b>
+      </div>
     </div>
   </footer>
+
+  <script>
+    // Scroll reveal
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (!e.isIntersecting) return;
+        e.target.classList.add('visible');
+        io.unobserve(e.target);
+      });
+    }, { threshold: 0.08, rootMargin: '0px 0px -28px 0px' });
+    document.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
+
+    // Nav elevation on scroll
+    const nav = document.querySelector('nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('elevated', window.scrollY > 8);
+    }, { passive: true });
+  </script>
+
 </body>
 </html>

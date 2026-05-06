@@ -420,4 +420,28 @@ app.get('/dashboard/:deviceId', async (req, res) => {
 
 app.get('/', (req, res) => res.sendFile(__dirname + '/public/index.html'));
 
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Lightweight health-check used by the keep-alive ping below
+app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
+
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+
+  // ── Render free-tier keep-alive ──────────────────────────────────────────
+  // Render spins down instances after ~15 min of inactivity.
+  // When RENDER_EXTERNAL_URL is set (auto-injected by Render) we ping ourselves
+  // every 14 minutes so the dyno never idles.  Silently skipped in local dev.
+  const selfUrl = process.env.RENDER_EXTERNAL_URL;
+  if (selfUrl) {
+    const mod = selfUrl.startsWith('https') ? require('https') : require('http');
+    const pingUrl = selfUrl.replace(/\/$/, '') + '/ping';
+    setInterval(() => {
+      mod.get(pingUrl, res => {
+        console.log(`[keep-alive] ${pingUrl} → ${res.statusCode}`);
+        res.resume(); // drain response body so the socket closes cleanly
+      }).on('error', err => {
+        console.warn('[keep-alive] ping failed:', err.message);
+      });
+    }, 14 * 60 * 1000); // 14 minutes — just under Render's 15-min idle window
+    console.log(`[keep-alive] pinging ${pingUrl} every 14 min`);
+  }
+});

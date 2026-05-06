@@ -1,0 +1,598 @@
+================================================================================
+       IoT GAS LEAK DETECTION SYSTEM — SECURITY FEATURES DOCUMENTATION
+================================================================================
+Project     : Gas Leak Detection IoT System
+Hardware    : ESP8266 (NodeMCU) + MQ Gas Sensor + Buzzer
+Backend     : Node.js + Express + MongoDB + Socket.IO
+Alerts      : Telegram Bot
+Team        : Darshan Tank, Kanav Trivedi, Tushar Surti
+================================================================================
+
+
+--------------------------------------------------------------------------------
+OVERVIEW
+--------------------------------------------------------------------------------
+This document describes all security features added to protect the system from
+common IoT attacks including replay attacks, brute force, sensor spoofing,
+man-in-the-middle, unauthorised data access, and denial of service.
+
+Security is implemented at TWO levels:
+  1. Arduino (ESP8266 device) — securing what the hardware sends
+  2. Node.js Server            — securing what the server accepts
+
+
+================================================================================
+PART 1 — SERVER-SIDE SECURITY (server.js)
+================================================================================
+
+
+--------------------------------------------------------------------------------
+1. HELMET.JS — HTTP SECURITY HEADERS
+--------------------------------------------------------------------------------
+Library     : helmet (npm)
+Applied at  : Global middleware (every request)
+
+What it does:
+  Helmet automatically sets a collection of HTTP response headers that protect
+  against well-known web vulnerabilities.
+
+Headers added by Helmet:
+  - X-Frame-Options: SAMEORIGIN
+      Prevents your dashboard from being embedded in an <iframe> on another
+      website, blocking clickjacking attacks.
+
+  - X-Content-Type-Options: nosniff
+      Stops browsers from trying to guess (sniff) the content type of a response.
+      Prevents MIME-type confusion attacks.
+
+  - Strict-Transport-Security (HSTS)
+      Tells browsers to only connect over HTTPS, even if the user types http://.
+      Prevents protocol downgrade attacks.
+
+  - X-DNS-Prefetch-Control: off
+      Prevents the browser from doing DNS prefetch, which can leak visited URLs.
+
+  - X-Download-Options: noopen
+      Prevents IE from auto-executing downloaded files.
+
+  - X-XSS-Protection: 0
+      Disables the old, broken XSS filter in older IE browsers (modern browsers
+      use CSP instead).
+
+  - Referrer-Policy: no-referrer
+      Stops the browser from sending the Referer header, protecting URL privacy.
+
+Attack prevented : Clickjacking, MIME sniffing, protocol downgrade, info leakage.
+
+Code location : server.js — app.use(helmet({ contentSecurityPolicy: false }));
+Note          : CSP is disabled because the dashboard loads Chart.js and
+                Font Awesome from public CDNs. Enabling strict CSP would require
+                listing every CDN URL explicitly.
+
+
+--------------------------------------------------------------------------------
+2. RATE LIMITING — DoS AND BRUTE FORCE PROTECTION
+--------------------------------------------------------------------------------
+Library     : express-rate-limit (npm)
+Applied at  : Two levels — global and per-endpoint
+
+--- Global Rate Limiter ---
+  Applies to    : ALL routes
+  Limit         : 100 requests per minute per IP address
+  Response      : HTTP 429 Too Many Requests
+                  { "error": "Too many requests, slow down." }
+
+  Purpose:
+    Prevents any single IP from flooding the server with requests, protecting
+    against basic Denial of Service (DoS) attacks. Limits how fast an attacker
+    can try to guess device IDs or probe the API.
+
+--- Gas API Rate Limiter (Stricter) ---
+  Applies to    : POST /api/gas only
+  Limit         : 30 requests per minute per IP address
+  Response      : HTTP 429 Too Many Requests
+                  { "error": "Rate limit exceeded for gas API." }
+
+  Purpose:
+    The gas endpoint is the most sensitive — it is what IoT devices use to
+    submit readings. A stricter limit here means:
+      - An attacker cannot flood fake readings into the database.
+      - A compromised or malfunctioning device cannot spam the server.
+      - Brute-forcing API keys or device IDs is slowed to 30 attempts/min.
+
+Attack prevented : Denial of Service (DoS), brute force on credentials,
+                   database flooding with fake readings.
+
+Code location : server.js — globalLimiter, gasLimiter middleware.
+
+
+--------------------------------------------------------------------------------
+3. CRYPTOGRAPHICALLY STRONG API KEY GENERATION
+--------------------------------------------------------------------------------
+Method      : Node.js built-in crypto.randomBytes()
+Key format  : 64-character lowercase hexadecimal string (256 bits of entropy)
+
+Old method (INSECURE):
+  Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+  This used Math.random() which is NOT cryptographically secure. An attacker
+  who knows the approximate time of registration could narrow down the key
+  space significantly.
+
+New method (SECURE):
+  crypto.randomBytes(32).toString('hex')
+  This uses the operating system's cryptographically secure random number
+  generator (CSPRNG). Each key has 2^256 possible values — brute forcing is
+  computationally impossible.
+
+Attack prevented : API key prediction, credential guessing.
+
+Code location : server.js — POST /api/register route.
+
+
+--------------------------------------------------------------------------------
+4. HMAC-SHA256 REQUEST AUTHENTICATION
+--------------------------------------------------------------------------------
+Algorithm   : HMAC-SHA256 (Hash-based Message Authentication Code)
+Library     : Node.js built-in crypto module (server), Crypto by Rhys Weatherley (Arduino)
+
+What is HMAC?
+  HMAC is a method to verify both the authenticity (who sent it) and integrity
+  (was it modified in transit) of a message. It uses a secret key to produce
+  a fixed-length signature. Without the key, no one can forge a valid signature.
+
+How it works in this system:
+
+  On the Arduino (sender):
+    1. The device knows its apiKey (stored in flash memory, never transmitted).
+    2. For every gas reading, it constructs a message string:
+         message = "deviceId:value:timestampMs"
+         example = "lp3k2a9f:350:1714900201000"
+    3. It computes:
+         signature = HMAC-SHA256(apiKey, message)
+         result    = 64-character hex string
+    4. It sends to the server:
+         { deviceId, value, timestamp, signature }
+       NOTE: The apiKey itself is NOT included in the request.
+
+  On the Server (verifier):
+    1. Server receives { deviceId, value, timestamp, signature }.
+    2. Looks up the device in MongoDB to get the stored apiKey.
+    3. Recomputes: expected = HMAC-SHA256(storedApiKey, "deviceId:value:timestamp")
+    4. Compares expected vs received signature using timingSafeEqual()
+       (constant-time comparison to prevent timing attacks).
+    5. If they match → request is authentic.
+       If they don't match → request is rejected with HTTP 401.
+
+Why this is better than sending the API key directly:
+  - Old approach: apiKey sent in every request header (x-api-key).
+    Anyone who intercepts ONE packet has the key forever.
+  - New approach: The key is never on the network. An attacker who intercepts
+    packets gets only a one-time-use signature tied to a specific value and
+    timestamp. They cannot use it to forge any other request.
+
+Why timingSafeEqual?
+  A naive string comparison (===) returns early as soon as it finds a mismatch.
+  An attacker can measure response time to determine how many characters of
+  their guess were correct (timing attack). timingSafeEqual always takes the
+  same time regardless of where the mismatch is.
+
+Attack prevented : Credential theft, man-in-the-middle injection, request
+                   forgery, timing attacks.
+
+Code location : server.js — verifyHMAC() function, POST /api/gas route.
+                arduino.ino — computeHMAC() function, sendReading() function.
+
+
+--------------------------------------------------------------------------------
+5. REPLAY ATTACK PREVENTION
+--------------------------------------------------------------------------------
+What is a replay attack?
+  An attacker sniffs network traffic and captures a valid HTTPS packet containing
+  a legitimate gas reading. Even though the HMAC signature is valid, the attacker
+  re-sends the same exact packet later — possibly to:
+    - Suppress a real gas leak alert (keep sending old "normal" readings)
+    - Flood the database with repeated data
+    - Bypass authentication by reusing a captured valid request
+
+How it is prevented (two-layer check):
+
+  Layer 1 — Timestamp Expiry Window:
+    - The Arduino includes the current Unix time (milliseconds) in every request.
+    - The server checks: |serverTime - requestTimestamp| < 60,000 ms (60 seconds)
+    - If the request is older than 60 seconds OR more than 60 seconds in the
+      future, it is rejected with HTTP 401.
+    - This means a captured packet is only valid for 60 seconds. After that,
+      replaying it does nothing.
+
+  Layer 2 — Monotonic Timestamp Check:
+    - The server stores the timestamp of the last accepted request for each device
+      in MongoDB (device.lastTimestamp field).
+    - For every new request: newTimestamp MUST be greater than device.lastTimestamp
+    - If someone replays a recent (within 60s) packet, the timestamp will be equal
+      to or less than the stored lastTimestamp, so it is rejected.
+    - Combined with Layer 1, this means even a packet captured 1 second ago
+      cannot be replayed if the device has already sent a newer reading.
+
+  NTP on Arduino:
+    - The Arduino uses NTPClient (Network Time Protocol) to get accurate UTC time.
+    - It syncs on boot and re-syncs every 60 seconds.
+    - Without accurate time, replay prevention would not work. This is why NTP
+      was added to the Arduino code.
+
+Security event logged : REPLAY_ATTACK (stored in MongoDB SecurityEvent collection)
+
+Attack prevented : Replay attacks, stale packet injection.
+
+Code location : server.js — timestamp checks in POST /api/gas route.
+                arduino.ino — NTPClient setup, timeClient.getEpochTime() in sendReading().
+
+
+--------------------------------------------------------------------------------
+6. SENSOR ANOMALY DETECTION
+--------------------------------------------------------------------------------
+What is sensor spoofing?
+  An attacker (or a tampered/faulty device) sends fake gas readings to manipulate
+  the system. Common attack scenarios:
+    - Send constant "safe" readings during an actual gas leak to suppress alerts.
+    - Send extreme readings to cause false alarms and exhaust the alert system.
+    - Rapidly oscillate readings to confuse the threshold logic.
+
+How it is detected (two anomaly types):
+
+  Anomaly Type 1 — FLAT READINGS (Spoofing Detection):
+    - The server maintains a rolling window of the last 10 readings per device.
+    - For each new reading, it calculates the standard deviation of the window.
+    - If stdDev < 5 AND the new value is also within 5 PPM of the average,
+      the readings are flagged as suspiciously constant.
+    - Real gas sensors have natural noise — they never produce perfectly flat
+      readings unless the sensor is disconnected or data is being fabricated.
+    - Detection threshold: 8+ readings in the window before triggering.
+
+  Anomaly Type 2 — SUDDEN SPIKE:
+    - If the new reading differs from the previous reading by more than 300 PPM
+      in a single 5-second interval, it is flagged as an impossible spike.
+    - Physical gas diffusion cannot cause such a rapid change.
+    - This catches hardware faults, data injection, or sensor sabotage.
+
+  On Detection:
+    - Security event is written to MongoDB (eventType: ANOMALY_FLAT or ANOMALY_SPIKE).
+    - Telegram alert sent to the device owner with details.
+    - Socket.IO event 'security-alert' emitted to the dashboard in real time.
+    - Dashboard shows a toast notification and refreshes the Security Events panel.
+    - The reading is still saved (for forensic purposes) but the alert is raised.
+
+Attack prevented : Sensor spoofing, false normal readings during a leak,
+                   data injection attacks, hardware tampering detection.
+
+Code location : server.js — detectAnomaly() function, POST /api/gas route.
+
+
+--------------------------------------------------------------------------------
+7. INPUT VALIDATION — SENSOR RANGE ENFORCEMENT
+--------------------------------------------------------------------------------
+What it does:
+  The ESP8266 ADC (Analog-to-Digital Converter) on pin A0 produces values
+  between 0 and 1023. Any value outside this range is physically impossible
+  for this hardware.
+
+  The server enforces: 0 <= value <= 1023
+
+  If a request comes in with value = -1, 9999, or "abc", it is:
+    - Rejected with HTTP 400 Bad Request
+    - Logged as INVALID_VALUE in SecurityEvent collection
+
+Why this matters:
+  Without range validation, an attacker could inject arbitrary large values to:
+    - Trigger false gas leak alerts
+    - Corrupt statistics and charts
+    - Potentially overflow fields in the database
+
+Attack prevented : Data injection, false alert triggering, database corruption.
+
+Code location : server.js — value range check in POST /api/gas route.
+
+
+--------------------------------------------------------------------------------
+8. DASHBOARD AND API ACCESS CONTROL (TOKEN-BASED)
+--------------------------------------------------------------------------------
+Problem before:
+  Anyone who knew a deviceId (visible in the URL) could:
+    - View that device's real-time gas readings
+    - Access historical data via GET /api/gas?deviceId=...
+    - Open the dashboard page
+
+  The deviceId is not secret — it is embedded in URLs and QR codes.
+
+Solution — Token Authentication:
+  The apiKey now doubles as a read token for the dashboard and data API.
+
+  POST /api/register now returns a dashboardUrl that includes the token:
+    https://yourserver.com/dashboard/lp3k2a9f?token=<64-char-apiKey>
+
+  GET /dashboard/:deviceId:
+    - Requires ?token=<apiKey> in the query string.
+    - Server looks up the device and verifies token === device.apiKey.
+    - Returns HTTP 401 if no token, HTTP 403 if token is wrong.
+    - Only someone with the token (the device owner) can view the dashboard.
+
+  GET /api/gas:
+    - Requires ?token=<apiKey> in the query string.
+    - Same verification as above.
+    - Failed attempts are logged as FAILED_AUTH in SecurityEvent collection.
+
+  The Arduino stores the full dashboardUrl (including token) in flash memory
+  (LittleFS), so the device owner can retrieve it from http://gassensor.local/.
+
+Attack prevented : Unauthorised data access, dashboard scraping, privacy breach.
+
+Code location : server.js — GET /dashboard/:deviceId, GET /api/gas routes.
+                arduino.ino — dashboardUrl stored via saveDeviceInfo().
+
+
+--------------------------------------------------------------------------------
+9. SECURITY EVENT LOGGING
+--------------------------------------------------------------------------------
+Model       : models/SecurityEvent.js (new file)
+Storage     : MongoDB — SecurityEvent collection
+Fields      : deviceId, eventType, ipAddress, details, timestamp
+
+Event Types logged:
+  FAILED_AUTH    — Wrong HMAC signature, unknown deviceId, invalid token on API.
+  REPLAY_ATTACK  — Timestamp expired or duplicate timestamp detected.
+  ANOMALY_FLAT   — Suspiciously constant sensor readings (possible spoofing).
+  ANOMALY_SPIKE  — Impossible reading jump > 300 PPM in one interval.
+  INVALID_VALUE  — Gas value outside sensor range (0–1023).
+
+Every event includes:
+  - The device ID being attacked/probed
+  - The IP address of the attacker
+  - A human-readable details string (e.g., "Stale timestamp: 1714899000000")
+  - A precise timestamp
+
+API endpoint : GET /api/security-events?deviceId=...&token=...
+  - Returns the 20 most recent events for a device.
+  - Token-protected (same as dashboard access).
+  - Called by the dashboard on load and refreshed on each new security-alert event.
+
+Dashboard display:
+  - Security Events panel at the bottom of the dashboard page.
+  - Each event shown with: event type (colour-coded), details, time.
+  - Red = auth/replay attacks, Orange = anomalies, Blue = invalid values.
+  - Refreshes in real time via Socket.IO when a new anomaly is detected.
+
+Console logging:
+  Every security event is also printed to the server console with the format:
+    [SECURITY] FAILED_AUTH | device=lp3k2a9f | ip=192.168.1.5 | Invalid HMAC signature
+
+Attack prevented : Gives visibility into attacks that would otherwise be silent.
+
+Code location : models/SecurityEvent.js, server.js — logSecurityEvent() function.
+                public/device-dashboard.html — Security Events panel.
+
+
+================================================================================
+PART 2 — ARDUINO-SIDE SECURITY (arduino.ino)
+================================================================================
+
+
+--------------------------------------------------------------------------------
+10. NTP TIME SYNCHRONISATION
+--------------------------------------------------------------------------------
+Library     : NTPClient by Fabrice Weinberg
+NTP Server  : pool.ntp.org (public, globally distributed)
+Timezone    : UTC (offset = 0)
+
+What it does:
+  On boot (after WiFi connects), the ESP8266 contacts an NTP server and
+  synchronises its clock to real UTC time. It re-syncs every 60 seconds
+  during operation to handle clock drift.
+
+Why it is required:
+  Replay attack prevention depends on timestamps. If the device's clock is
+  wrong, all its timestamps will be rejected by the server (outside ±60s window).
+  NTP ensures the device clock stays accurate to within a few hundred milliseconds.
+
+Behaviour when NTP fails:
+  If NTP has not synced (getEpochTime() returns 0), sendReading() is skipped
+  entirely. This prevents the device from sending requests with timestamp = 0
+  which would be trivially detected and rejected.
+
+Code location : arduino.ino — NTPClient setup in setup(), timeClient.update()
+                in loop() and sendReading().
+
+
+--------------------------------------------------------------------------------
+11. HMAC-SHA256 REQUEST SIGNING ON DEVICE
+--------------------------------------------------------------------------------
+Library     : Crypto by Rhys Weatherley (Arduino Library Manager)
+              Specifically: HMAC<SHA256> template class
+
+How the signing works on the Arduino:
+
+  Step 1: Get current time
+    unsigned long timestampMs = timeClient.getEpochTime() * 1000UL;
+
+  Step 2: Build the message string
+    String message = deviceId + ":" + String(gasValue) + ":" + String(timestampMs);
+    Example: "lp3k2a9f:350:1714900201000"
+
+  Step 3: Compute HMAC-SHA256
+    HMAC<SHA256> hmac;
+    hmac.resetHMAC(key, keyLength);
+    hmac.update(message, messageLength);
+    hmac.finalizeHMAC(key, keyLength, result, 32);
+    Convert result bytes to 64-char hex string.
+
+  Step 4: Build and send the JSON body
+    {
+      "deviceId"  : "lp3k2a9f",
+      "value"     : 350,
+      "timestamp" : 1714900201000,
+      "signature" : "a3f9b2e1...64hexchars..."
+    }
+    NOTE: apiKey is NOT included. It stays on the device.
+
+What is stored on the device (LittleFS flash):
+  - deviceId    (public — identifies the device)
+  - apiKey      (secret — used only to compute HMAC, never transmitted)
+  - dashboardUrl (includes token — for the local info page)
+  - deviceName  (human readable label)
+
+Attack prevented : Man-in-the-middle interception of credentials,
+                   credential theft from network traffic,
+                   request forgery by third parties.
+
+Code location : arduino.ino — computeHMAC() function, sendReading() function.
+
+
+--------------------------------------------------------------------------------
+12. HTTPS FOR ALL CLOUD COMMUNICATION
+--------------------------------------------------------------------------------
+All communication between the ESP8266 and the Render server uses HTTPS
+(TLS encryption). This means:
+  - All data in transit is encrypted — no one can read readings or tokens
+    by sniffing network packets.
+  - The server's identity is verified by a TLS certificate.
+
+Current status:
+  client.setInsecure() is used, which skips certificate validation.
+  This means TLS encrypts the traffic, but the device does not verify
+  it is talking to the real server (vulnerable to MITM with a fake cert).
+
+  For maximum security, replace setInsecure() with the server's TLS
+  certificate SHA-1 fingerprint:
+    client.setFingerprint("AA BB CC DD EE FF ...");
+  Note: Render.com rotates certificates periodically, so the fingerprint
+  must be updated when it changes.
+
+  HMAC signing provides a strong compensating control — even if an attacker
+  performs a MITM and reads the body, they cannot forge requests without the
+  apiKey (which is never transmitted).
+
+Code location : arduino.ino — WiFiClientSecure client in registerDeviceToCloud()
+                and sendReading().
+
+
+================================================================================
+PART 3 — ATTACK SCENARIOS AND HOW THEY ARE DEFEATED
+================================================================================
+
+
+ATTACK 1: Replay Attack
+  Scenario : Attacker captures a valid HTTPS packet with a gas reading of 100 PPM
+             (safe). During an actual gas leak, they repeatedly replay this packet
+             to prevent the alert from triggering.
+  Defeated by:
+    - Timestamp expiry (replayed packet is >60s old → rejected).
+    - Monotonic timestamp check (already seen this timestamp → rejected).
+    - Logged as REPLAY_ATTACK in SecurityEvent with attacker's IP.
+
+
+ATTACK 2: Man-in-the-Middle (MITM)
+  Scenario : Attacker intercepts the WiFi traffic between the ESP8266 and the
+             server, reads the API key from the request, and uses it to send
+             fake readings.
+  Defeated by:
+    - API key is NEVER transmitted (HMAC means only the signature goes over the wire).
+    - Without the apiKey, attacker cannot compute a valid HMAC signature.
+    - Even if attacker reads the body, they only get a single-use signature
+      that is tied to one specific value+timestamp combination.
+
+
+ATTACK 3: Brute Force API Key
+  Scenario : Attacker tries thousands of deviceId + apiKey combinations against
+             POST /api/gas until they find a valid pair.
+  Defeated by:
+    - API key is 256-bit random — 2^256 combinations. Computationally impossible.
+    - Rate limiter allows max 30 attempts/min per IP.
+    - Each failed attempt is logged as FAILED_AUTH.
+    - Attacker cannot even test a key without knowing a valid HMAC signature.
+
+
+ATTACK 4: Denial of Service (DoS)
+  Scenario : Attacker sends thousands of requests per second to crash the server
+             or exhaust the MongoDB connection pool.
+  Defeated by:
+    - Global rate limiter: 100 req/min/IP.
+    - Gas endpoint limiter: 30 req/min/IP.
+    - Requests rejected at middleware level before hitting the database.
+
+
+ATTACK 5: Sensor Spoofing / False Normal
+  Scenario : Attacker (or compromised device) sends constant "350 PPM" readings
+             for hours to suppress a gas leak alert. Real sensor would show
+             natural variation.
+  Defeated by:
+    - Anomaly detection computes standard deviation over last 10 readings.
+    - stdDev < 5 over 8+ samples triggers ANOMALY_FLAT event.
+    - Telegram alert sent to device owner immediately.
+    - Security event visible on dashboard in real time.
+
+
+ATTACK 6: Unauthorised Dashboard Access
+  Scenario : Attacker discovers a deviceId (from a shared URL, QR code, or
+             guessing) and opens the dashboard to monitor a home or business.
+  Defeated by:
+    - Dashboard requires ?token=<apiKey> — just the deviceId is not enough.
+    - GET /api/gas also requires the token.
+    - 64-char token cannot be guessed.
+
+
+ATTACK 7: Fake Device Registration
+  Scenario : Attacker registers hundreds of fake devices to pollute the database
+             or exhaust resources.
+  Defeated by:
+    - Global rate limiter (100 req/min) limits registration spam.
+    - Each registration creates a separate device record — no shared state is
+      corrupted.
+    - Future hardening: add a registration secret/code known only to legitimate
+      hardware.
+
+
+ATTACK 8: Out-of-Range Value Injection
+  Scenario : Attacker sends { value: 99999 } to trigger a false alert or corrupt
+             statistics.
+  Defeated by:
+    - Server enforces 0 <= value <= 1023.
+    - Out-of-range values are rejected with HTTP 400.
+    - Logged as INVALID_VALUE.
+
+
+================================================================================
+PART 4 — FILES CHANGED SUMMARY
+================================================================================
+
+  NEW FILES:
+    models/SecurityEvent.js         — MongoDB model for security event logging
+
+  MODIFIED FILES:
+    models/Device.js                — Added lastTimestamp, lastReadings fields
+    package.json                    — Added express-rate-limit, helmet
+    server.js                       — All server-side security features
+    public/device-dashboard.html    — Token passing, Security Events panel
+    arduino.ino                     — NTP sync, HMAC-SHA256 signing
+
+  UNCHANGED:
+    models/GasReading.js            — No changes needed
+    public/index.html               — No changes needed
+
+
+================================================================================
+PART 5 — ARDUINO LIBRARY INSTALLATION GUIDE
+================================================================================
+
+Open Arduino IDE → Tools → Manage Libraries (Ctrl+Shift+I)
+
+  1. Search: NTPClient
+     Install: "NTPClient" by Fabrice Weinberg
+
+  2. Search: Crypto
+     Install: "Crypto" by Rhys Weatherley
+     (This provides HMAC, SHA256, and other crypto primitives)
+
+  Both libraries must be installed before compiling arduino.ino.
+
+
+================================================================================
+END OF DOCUMENT
+================================================================================

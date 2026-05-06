@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Gas Leakage Detection System</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #0a0e1a;
+      min-height: 100vh;
+      color: #e2e8f0;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 40% 60%, rgba(236, 72, 153, 0.1) 0%, transparent 50%);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* Animated background particles */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .particle {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(1px);
+      animation: float 15s infinite ease-in-out;
+    }
+
+    .particle:nth-child(odd) {
+      width: 3px;
+      height: 3px;
+      background: rgba(59, 130, 246, 0.4);
+    }
+
+    .particle:nth-child(even) {
+      width: 5px;
+      height: 5px;
+      background: rgba(139, 92, 246, 0.3);
+    }
+
+    .particle:nth-child(3n) {
+      width: 2px;
+      height: 2px;
+      background: rgba(236, 72, 153, 0.35);
+    }
+
+    @keyframes float {
+      0% { transform: translateY(100vh) translateX(0) rotate(0deg); opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 0.8; }
+      100% { transform: translateY(-100vh) translateX(100px) rotate(360deg); opacity: 0; }
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Header Section */
+    .header {
+      text-align: center;
+      margin-bottom: 60px;
+      animation: fadeInDown 1s ease-out;
+    }
+
+    @keyframes fadeInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .logo-icon {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899);
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 35px;
+      animation: pulse 2s infinite;
+      box-shadow: 0 15px 50px rgba(59, 130, 246, 0.5), 0 0 30px rgba(139, 92, 246, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .logo-icon::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+      animation: shimmer 3s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+      100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 10px 40px rgba(59, 130, 246, 0.4); }
+      50% { transform: scale(1.05); box-shadow: 0 15px 50px rgba(59, 130, 246, 0.6); }
+    }
+
+    h1 {
+      font-size: 3.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #f472b6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 10px;
+      letter-spacing: -2px;
+      text-shadow: 0 0 40px rgba(59, 130, 246, 0.3);
+      position: relative;
+    }
+
+    .subtitle {
+      font-size: 1.2rem;
+      color: #94a3b8;
+      font-weight: 300;
+    }
+
+    /* Info Cards */
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 30px;
+      margin-bottom: 50px;
+    }
+
+    .info-card {
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 24px;
+      padding: 35px;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      animation: fadeInUp 1s ease-out;
+      animation-fill-mode: both;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .info-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.5), transparent);
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    .info-card:hover::after {
+      opacity: 1;
+    }
+
+    .info-card::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    .info-card:hover::before {
+      opacity: 1;
+    }
+
+    .info-card:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .info-card:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .info-card:hover {
+      transform: translateY(-12px) scale(1.02);
+      border-color: rgba(59, 130, 246, 0.6);
+      box-shadow: 0 25px 70px rgba(59, 130, 246, 0.4), 0 0 40px rgba(139, 92, 246, 0.2);
+    }
+
+    .card-icon {
+      width: 70px;
+      height: 70px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin-bottom: 20px;
+      box-shadow: 0 15px 35px rgba(59, 130, 246, 0.4);
+      position: relative;
+      transition: transform 0.3s ease;
+    }
+
+    .info-card:hover .card-icon {
+      transform: scale(1.1) rotate(5deg);
+    }
+
+    .card-icon::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      border-radius: 18px;
+      z-index: -1;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .info-card:hover .card-icon::before {
+      opacity: 1;
+    }
+
+    .info-card h3 {
+      font-size: 1.5rem;
+      margin-bottom: 15px;
+      color: #f1f5f9;
+    }
+
+    .info-card p {
+      color: #94a3b8;
+      line-height: 1.6;
+      margin-bottom: 15px;
+    }
+
+    .info-card code {
+      background: rgba(15, 23, 42, 0.6);
+      color: #3b82f6;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    /* Features Section */
+    .features {
+      margin-top: 60px;
+      animation: fadeInUp 1s ease-out 0.6s both;
+    }
+
+    .features h2 {
+      text-align: center;
+      font-size: 2.5rem;
+      margin-bottom: 40px;
+      color: #f1f5f9;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 25px;
+    }
+
+    .feature-item {
+      background: rgba(15, 23, 42, 0.5);
+      backdrop-filter: blur(15px) saturate(180%);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 20px;
+      padding: 30px;
+      text-align: center;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-item::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: radial-gradient(circle at center, rgba(59, 130, 246, 0.1), transparent 70%);
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    .feature-item:hover::before {
+      opacity: 1;
+    }
+
+    .feature-item:hover {
+      border-color: rgba(59, 130, 246, 0.5);
+      transform: translateY(-8px);
+      background: rgba(15, 23, 42, 0.8);
+      box-shadow: 0 20px 50px rgba(59, 130, 246, 0.3);
+    }
+
+    .feature-icon {
+      font-size: 3rem;
+      margin-bottom: 15px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      transition: transform 0.3s ease;
+    }
+
+    .feature-item:hover .feature-icon {
+      transform: scale(1.2) rotateY(360deg);
+    }
+
+    .feature-item h4 {
+      font-size: 1.2rem;
+      margin-bottom: 10px;
+      color: #f1f5f9;
+    }
+
+    .feature-item p {
+      color: #94a3b8;
+      font-size: 0.95rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 2rem;
+      }
+
+      .subtitle {
+        font-size: 1rem;
+      }
+
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .features h2 {
+        font-size: 2rem;
+      }
+
+      .container {
+        padding: 20px 15px;
+      }
+    }
+
+    /* Glow effect */
+    @keyframes glow {
+      0%, 100% { filter: drop-shadow(0 0 5px rgba(59, 130, 246, 0.5)); }
+      50% { filter: drop-shadow(0 0 20px rgba(59, 130, 246, 0.8)); }
+    }
+
+    .glow {
+      animation: glow 3s infinite;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 80px;
+      padding: 40px 20px;
+      text-align: center;
+      border-top: 1px solid rgba(59, 130, 246, 0.2);
+      animation: fadeIn 1s ease-out 0.8s both;
+    }
+
+    .footer-content {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .footer-text {
+      font-size: 1.1rem;
+      color: #94a3b8;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .footer-text i {
+      animation: heartbeat 1.5s infinite;
+    }
+
+    @keyframes heartbeat {
+      0%, 100% { transform: scale(1); }
+      10%, 30% { transform: scale(1.2); }
+      20%, 40% { transform: scale(1); }
+    }
+
+    .team-name {
+      color: #3b82f6;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      cursor: default;
+    }
+
+    .team-name:hover {
+      color: #8b5cf6;
+      text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+    }
+
+    .footer-year {
+      font-size: 0.9rem;
+      color: #64748b;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 768px) {
+      .footer-text {
+        font-size: 0.95rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Animated particles background -->
+  <div class="particles" id="particles"></div>
+
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <div class="logo-icon glow">
+          <i class="fas fa-wind"></i>
+        </div>
+      </div>
+      <h1>IoT Gas Leakage Detection System</h1>
+      <p class="subtitle">Real-time monitoring & intelligent alerts for industrial safety</p>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="info-grid">
+      <div class="info-card">
+        <div class="card-icon">
+          <i class="fas fa-gauge-high"></i>
+        </div>
+        <h3>Device Dashboard</h3>
+        <p>Access real-time gas monitoring data for your devices</p>
+        <p>Navigate to: <code>/dashboard/&lt;deviceId&gt;</code></p>
+      </div>
+
+      <div class="info-card">
+        <div class="card-icon">
+          <i class="fas fa-plug"></i>
+        </div>
+        <h3>Device Registration</h3>
+        <p>IoT devices automatically register via API endpoint</p>
+        <p>Endpoint: <code>POST /api/register</code></p>
+      </div>
+
+      <div class="info-card">
+        <div class="card-icon">
+          <i class="fas fa-bell"></i>
+        </div>
+        <h3>Smart Alerts</h3>
+        <p>Receive instant notifications via Telegram when gas levels exceed safe thresholds</p>
+      </div>
+    </div>
+
+    <!-- Features Section -->
+    <div class="features">
+      <h2>System Features</h2>
+      <div class="features-grid">
+        <div class="feature-item">
+          <div class="feature-icon"><i class="fas fa-chart-line"></i></div>
+          <h4>Live Monitoring</h4>
+          <p>Real-time gas level tracking with visual charts</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-icon"><i class="fas fa-cloud"></i></div>
+          <h4>Cloud Connected</h4>
+          <p>WebSocket-based instant data synchronization</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-icon"><i class="fas fa-shield-halved"></i></div>
+          <h4>Safety First</h4>
+          <p>Automated alerts for hazardous conditions</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-icon"><i class="fas fa-mobile-screen"></i></div>
+          <h4>Responsive Design</h4>
+          <p>Access from any device, anywhere</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Create animated particles
+    const particlesContainer = document.getElementById('particles');
+    const particleCount = 50;
+
+    for (let i = 0; i < particleCount; i++) {
+      const particle = document.createElement('div');
+      particle.className = 'particle';
+      particle.style.left = Math.random() * 100 + '%';
+      particle.style.animationDelay = Math.random() * 15 + 's';
+      particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+      particlesContainer.appendChild(particle);
+    }
+  </script>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <p class="footer-text">
+        Made with <i class="fas fa-heart" style="color: #ef4444;"></i> by 
+        <span class="team-name">Darshan Tank</span>, 
+        <span class="team-name">Kanav Trivedi</span>, 
+        <span class="team-name">Tushar Surti</span>
+      </p>
+      <p class="footer-year">© 2025 IoT Gas Leakage Detection System</p>
+    </div>
+  </footer>
+</body>
+</html>

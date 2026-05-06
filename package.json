@@ -1,0 +1,35 @@
+{
+  "name": "gas-monitor",
+  "version": "1.0.0",
+  "description": "Node.js server with live dashboard and Telegram alerts for LPG gas leakage detection using ESP8266.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "mongoose": "^7.0.0",
+    "node-telegram-bot-api": "^0.61.0",
+    "socket.io": "^4.7.0",
+    "body-parser": "^1.20.2"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  },
+  "keywords": [
+    "iot",
+    "esp8266",
+    "gas-sensor",
+    "nodejs",
+    "telegram-bot",
+    "chartjs",
+    "socket.io"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}

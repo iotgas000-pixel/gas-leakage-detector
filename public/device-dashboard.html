@@ -1,0 +1,1072 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Device Dashboard - IoT Gas Monitor</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #0a0e1a;
+      min-height: 100vh;
+      color: #e2e8f0;
+      padding: 20px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(circle at 15% 15%, rgba(59, 130, 246, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(139, 92, 246, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(236, 72, 153, 0.08) 0%, transparent 50%);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* Animated background */
+    .bg-animation {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.1;
+    }
+
+    .floating-circle {
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.8), transparent);
+      animation: float-around 20s infinite ease-in-out;
+    }
+
+    @keyframes float-around {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      25% { transform: translate(50px, -50px) scale(1.1); }
+      50% { transform: translate(-30px, 30px) scale(0.9); }
+      75% { transform: translate(30px, 50px) scale(1.05); }
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+      animation: fadeIn 0.8s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 40px;
+      flex-wrap: wrap;
+      gap: 20px;
+      animation: slideDown 0.8s ease-out;
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .logo-badge {
+      width: 70px;
+      height: 70px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      box-shadow: 0 15px 40px rgba(59, 130, 246, 0.5), 0 0 30px rgba(139, 92, 246, 0.3);
+      animation: pulse-glow 2s infinite;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .logo-badge::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(45deg, transparent, rgba(255,255,255,0.15), transparent);
+      animation: shimmer 3s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+      100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { 
+        box-shadow: 0 15px 40px rgba(59, 130, 246, 0.5), 0 0 30px rgba(139, 92, 246, 0.3); 
+        transform: scale(1);
+      }
+      50% { 
+        box-shadow: 0 20px 50px rgba(59, 130, 246, 0.8), 0 0 40px rgba(139, 92, 246, 0.5); 
+        transform: scale(1.05);
+      }
+    }
+
+    .header-info h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 5px;
+    }
+
+    .device-id {
+      font-size: 0.9rem;
+      color: #94a3b8;
+      font-family: 'Courier New', monospace;
+    }
+
+    .device-id i {
+      color: #3b82f6;
+      margin-right: 5px;
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 24px;
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(10px);
+      border-radius: 30px;
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      font-size: 0.95rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse-dot 2s infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    /* Main Grid */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 25px;
+      margin-bottom: 30px;
+    }
+
+    /* Status Cards */
+    .status-card {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 24px;
+      padding: 30px;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      animation: fadeInUp 0.8s ease-out;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .status-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.6), transparent);
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    .status-card:hover::after {
+      opacity: 1;
+    }
+
+    .status-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+      transform: scaleX(0);
+      transition: transform 0.4s;
+    }
+
+    .status-card:hover::before {
+      transform: scaleX(1);
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .status-card:nth-child(2) { animation-delay: 0.1s; }
+    .status-card:nth-child(3) { animation-delay: 0.2s; }
+
+    .status-card:hover {
+      transform: translateY(-8px) scale(1.02);
+      border-color: rgba(59, 130, 246, 0.6);
+      box-shadow: 0 25px 70px rgba(59, 130, 246, 0.4), 0 0 40px rgba(139, 92, 246, 0.2);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 15px;
+    }
+
+    .card-title {
+      font-size: 0.9rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 500;
+    }
+
+    .card-icon {
+      width: 45px;
+      height: 45px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
+      color: #60a5fa;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
+    }
+
+    .status-card:hover .card-icon {
+      transform: scale(1.1) rotate(5deg);
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+    }
+
+    .card-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 5px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .card-label {
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-top: 10px;
+      transition: all 0.3s;
+    }
+
+    .status-normal {
+      background: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-warning {
+      background: rgba(245, 158, 11, 0.15);
+      color: #f59e0b;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      animation: pulse-warning 1.5s infinite;
+    }
+
+    .status-danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      animation: pulse-danger 1s infinite;
+    }
+
+    @keyframes pulse-warning {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(245, 158, 11, 0); }
+      50% { transform: scale(1.05); box-shadow: 0 0 20px rgba(245, 158, 11, 0.4); }
+    }
+
+    @keyframes pulse-danger {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(239, 68, 68, 0); }
+      50% { transform: scale(1.05); box-shadow: 0 0 20px rgba(239, 68, 68, 0.5); }
+    }
+
+    /* Chart Card */
+    .chart-card {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 24px;
+      padding: 35px;
+      margin-bottom: 30px;
+      animation: fadeInUp 0.8s ease-out 0.3s both;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .chart-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+    }
+
+    .chart-card h2 {
+      font-size: 1.5rem;
+      color: #f1f5f9;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 350px;
+      margin-bottom: 20px;
+    }
+
+    /* Telegram Card */
+    .telegram-card {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 24px;
+      padding: 35px;
+      animation: fadeInUp 0.8s ease-out 0.4s both;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .telegram-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+    }
+
+    .telegram-card h2 {
+      font-size: 1.5rem;
+      color: #f1f5f9;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .telegram-icon {
+      color: #3b82f6;
+    }
+
+    .telegram-description {
+      color: #94a3b8;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    .command-box {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 15px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .command-box::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: linear-gradient(180deg, #3b82f6, #8b5cf6);
+    }
+
+    .command-text {
+      font-family: 'Courier New', monospace;
+      color: #3b82f6;
+      font-size: 1.1rem;
+      margin-left: 15px;
+      user-select: all;
+    }
+
+    .copy-button {
+      padding: 14px 28px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 12px 35px rgba(59, 130, 246, 0.4);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .copy-button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      transition: left 0.5s;
+    }
+
+    .copy-button:hover::before {
+      left: 100%;
+    }
+
+    .copy-button:hover {
+      transform: translateY(-3px) scale(1.05);
+      box-shadow: 0 20px 50px rgba(59, 130, 246, 0.6), 0 0 30px rgba(139, 92, 246, 0.4);
+    }
+
+    .copy-button:active {
+      transform: translateY(0);
+    }
+
+    .copy-button.copied {
+      background: linear-gradient(135deg, #10b981, #059669);
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .header-info h1 {
+        font-size: 1.5rem;
+      }
+
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .card-value {
+        font-size: 2rem;
+      }
+
+      .chart-container {
+        height: 250px;
+      }
+
+      body {
+        padding: 15px;
+      }
+    }
+
+    /* Loading Animation */
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(59, 130, 246, 0.3);
+      border-radius: 50%;
+      border-top-color: #3b82f6;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Notification Toast */
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      padding: 15px 25px;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(16, 185, 129, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 1000;
+      animation: slideInRight 0.3s ease-out;
+    }
+
+    @keyframes slideInRight {
+      from { transform: translateX(400px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    .toast.hide {
+      animation: slideOutRight 0.3s ease-out forwards;
+    }
+
+    @keyframes slideOutRight {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(400px); opacity: 0; }
+    }
+
+    /* Security Events Panel */
+    .security-card {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 24px;
+      padding: 35px;
+      margin-bottom: 30px;
+      animation: fadeInUp 0.8s ease-out 0.5s both;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .security-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #ef4444, #f59e0b, #ef4444);
+    }
+
+    .security-card h2 {
+      font-size: 1.5rem;
+      color: #f1f5f9;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .event-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .event-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 12px;
+      border-left: 3px solid #ef4444;
+      font-size: 0.88rem;
+    }
+
+    .event-item.anomaly { border-left-color: #f59e0b; }
+    .event-item.info { border-left-color: #3b82f6; }
+
+    .event-type {
+      font-weight: 700;
+      color: #ef4444;
+      min-width: 130px;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .event-item.anomaly .event-type { color: #f59e0b; }
+    .event-item.info .event-type { color: #3b82f6; }
+
+    .event-details { color: #94a3b8; flex: 1; }
+    .event-time { color: #64748b; font-size: 0.78rem; white-space: nowrap; }
+
+    .no-events {
+      color: #10b981;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.95rem;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 60px;
+      padding: 40px 20px;
+      text-align: center;
+      border-top: 1px solid rgba(59, 130, 246, 0.2);
+      animation: fadeInUp 0.8s ease-out 0.6s both;
+    }
+
+    .footer-content {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .footer-text {
+      font-size: 1.1rem;
+      color: #94a3b8;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .footer-text i {
+      animation: heartbeat 1.5s infinite;
+    }
+
+    @keyframes heartbeat {
+      0%, 100% { transform: scale(1); }
+      10%, 30% { transform: scale(1.2); }
+      20%, 40% { transform: scale(1); }
+    }
+
+    .team-name {
+      color: #3b82f6;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      cursor: default;
+    }
+
+    .team-name:hover {
+      color: #8b5cf6;
+      text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+    }
+
+    .footer-year {
+      font-size: 0.9rem;
+      color: #64748b;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 768px) {
+      .footer-text {
+        font-size: 0.95rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Animated Background -->
+  <div class="bg-animation">
+    <div class="floating-circle" style="width: 300px; height: 300px; top: 10%; left: 5%; animation-delay: 0s;"></div>
+    <div class="floating-circle" style="width: 200px; height: 200px; top: 60%; right: 10%; animation-delay: 5s;"></div>
+    <div class="floating-circle" style="width: 250px; height: 250px; bottom: 20%; left: 50%; animation-delay: 10s;"></div>
+  </div>
+
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <div class="logo-badge">
+          <i class="fas fa-wind"></i>
+        </div>
+        <div class="header-info">
+          <h1>Gas Monitoring Dashboard</h1>
+          <div class="device-id">
+            <i class="fas fa-microchip"></i>
+            <span id="meta">Loading device...</span>
+          </div>
+        </div>
+      </div>
+      <div class="connection-status">
+        <div class="status-dot"></div>
+        <span>Connected</span>
+      </div>
+    </div>
+
+    <!-- Status Cards -->
+    <div class="dashboard-grid">
+      <div class="status-card">
+        <div class="card-header">
+          <span class="card-title">Current Reading</span>
+          <div class="card-icon">
+            <i class="fas fa-gauge-high"></i>
+          </div>
+        </div>
+        <div class="card-value" id="latest">--</div>
+        <div class="card-label">Parts Per Million (PPM)</div>
+      </div>
+
+      <div class="status-card">
+        <div class="card-header">
+          <span class="card-title">System Status</span>
+          <div class="card-icon">
+            <i class="fas fa-shield-halved"></i>
+          </div>
+        </div>
+        <div id="status">
+          <span class="status-badge status-normal">
+            <i class="fas fa-spinner loading"></i>
+            <span>Initializing...</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="status-card">
+        <div class="card-header">
+          <span class="card-title">Data Points</span>
+          <div class="card-icon">
+            <i class="fas fa-database"></i>
+          </div>
+        </div>
+        <div class="card-value" id="dataCount">0</div>
+        <div class="card-label">Last 60 readings</div>
+      </div>
+    </div>
+
+    <!-- Chart Card -->
+    <div class="chart-card">
+      <h2>
+        <i class="fas fa-chart-line" style="color: #3b82f6;"></i>
+        Real-Time Gas Level Monitoring
+      </h2>
+      <div class="chart-container">
+        <canvas id="chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Telegram Integration Card -->
+    <div class="telegram-card">
+      <h2>
+        <i class="fab fa-telegram telegram-icon"></i>
+        Telegram Alert Integration
+      </h2>
+      <p class="telegram-description">
+        Connect your Telegram account to receive instant notifications when gas levels exceed safe thresholds. 
+        Copy the command below and send it to your Telegram bot.
+      </p>
+      <div class="command-box">
+        <div class="command-text" id="linkCmd">/link &lt;deviceId&gt;</div>
+      </div>
+      <button class="copy-button" onclick="copyCmd()">
+        <i class="fas fa-copy"></i>
+        <span id="copyBtnText">Copy Command</span>
+      </button>
+    </div>
+
+    <!-- Security Events Panel -->
+    <div class="security-card">
+      <h2>
+        <i class="fas fa-shield-halved" style="color: #ef4444;"></i>
+        Security Events
+      </h2>
+      <div class="event-list" id="eventList">
+        <div class="no-events">
+          <i class="fas fa-circle-check"></i>
+          <span>No security events recorded.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const socket = io();
+  const deviceId = window.location.pathname.split('/').pop();
+  const token = new URLSearchParams(window.location.search).get('token');
+  document.getElementById('meta').innerText = 'Device ID: ' + deviceId;
+
+  socket.emit('join-device', deviceId);
+
+  // Chart Configuration
+  const ctx = document.getElementById('chart').getContext('2d');
+  let labels = [], data = [];
+  
+  const gradientFill = ctx.createLinearGradient(0, 0, 0, 350);
+  gradientFill.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
+  gradientFill.addColorStop(1, 'rgba(59, 130, 246, 0.01)');
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: { 
+      labels, 
+      datasets: [{ 
+        label: 'Gas Level (PPM)', 
+        data,
+        fill: true,
+        backgroundColor: gradientFill,
+        borderColor: '#3b82f6',
+        borderWidth: 3,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        pointHoverBackgroundColor: '#3b82f6',
+        pointHoverBorderColor: '#fff',
+        pointHoverBorderWidth: 2
+      }] 
+    },
+    options: { 
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        intersect: false,
+        mode: 'index'
+      },
+      plugins: {
+        legend: {
+          display: true,
+          labels: {
+            color: '#94a3b8',
+            font: {
+              size: 12,
+              family: "'Segoe UI', sans-serif"
+            }
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#f1f5f9',
+          bodyColor: '#94a3b8',
+          borderColor: 'rgba(59, 130, 246, 0.5)',
+          borderWidth: 1,
+          padding: 12,
+          displayColors: false,
+          callbacks: {
+            label: function(context) {
+              return 'Gas Level: ' + context.parsed.y + ' PPM';
+            }
+          }
+        }
+      },
+      scales: { 
+        y: { 
+          beginAtZero: true,
+          grid: {
+            color: 'rgba(59, 130, 246, 0.1)',
+            drawBorder: false
+          },
+          ticks: {
+            color: '#94a3b8',
+            font: {
+              size: 11
+            }
+          }
+        },
+        x: {
+          grid: {
+            color: 'rgba(59, 130, 246, 0.1)',
+            drawBorder: false
+          },
+          ticks: {
+            color: '#94a3b8',
+            font: {
+              size: 11
+            },
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 12
+          }
+        }
+      }
+    }
+  });
+
+  function pushPoint(v, ts) {
+    labels.push(new Date(ts).toLocaleTimeString());
+    data.push(v);
+    if (labels.length > 60) { 
+      labels.shift(); 
+      data.shift(); 
+    }
+    chart.update('none'); // Smooth update without animation
+    
+    // Update latest value with animation
+    const latestEl = document.getElementById('latest');
+    latestEl.style.transform = 'scale(1.1)';
+    latestEl.innerText = v;
+    setTimeout(() => { latestEl.style.transform = 'scale(1)'; }, 200);
+    
+    // Update data count
+    document.getElementById('dataCount').innerText = labels.length;
+    
+    // Update status with appropriate styling
+    const statusEl = document.getElementById('status');
+    let statusHTML = '';
+    
+    if (v >= 500) {
+      statusHTML = '<span class="status-badge status-danger"><i class="fas fa-triangle-exclamation"></i><span>Critical Alert</span></span>';
+    } else if (v >= 400) {
+      statusHTML = '<span class="status-badge status-warning"><i class="fas fa-exclamation-circle"></i><span>Warning Level</span></span>';
+    } else {
+      statusHTML = '<span class="status-badge status-normal"><i class="fas fa-circle-check"></i><span>Normal Operation</span></span>';
+    }
+    
+    statusEl.innerHTML = statusHTML;
+  }
+
+  // Fetch recent readings (token required)
+  fetch('/api/gas?deviceId=' + deviceId + '&token=' + token + '&limit=60')
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(list => {
+      list.reverse().forEach(it => pushPoint(it.value, it.timestamp));
+    })
+    .catch(err => {
+      console.error('Error fetching data:', err);
+      document.getElementById('status').innerHTML =
+        '<span class="status-badge status-warning"><i class="fas fa-exclamation-circle"></i><span>Connection Error</span></span>';
+    });
+
+  // Fetch security events
+  function loadSecurityEvents() {
+    fetch('/api/security-events?deviceId=' + deviceId + '&token=' + token)
+      .then(r => r.ok ? r.json() : [])
+      .then(events => {
+        const list = document.getElementById('eventList');
+        if (!events.length) return;
+        list.innerHTML = '';
+        events.forEach(ev => {
+          const isAnomaly = ev.eventType.startsWith('ANOMALY');
+          const isInfo = ev.eventType === 'INVALID_VALUE';
+          const div = document.createElement('div');
+          div.className = 'event-item' + (isAnomaly ? ' anomaly' : isInfo ? ' info' : '');
+          div.innerHTML =
+            '<span class="event-type">' + ev.eventType + '</span>' +
+            '<span class="event-details">' + (ev.details || '') + '</span>' +
+            '<span class="event-time">' + new Date(ev.timestamp).toLocaleTimeString() + '</span>';
+          list.appendChild(div);
+        });
+      })
+      .catch(() => {});
+  }
+  loadSecurityEvents();
+
+  // Live updates from Socket.IO
+  socket.on('new-reading', payload => {
+    if (payload.deviceId === deviceId) {
+      pushPoint(payload.value, payload.timestamp);
+    }
+  });
+
+  // Security alert from server (anomaly detected)
+  socket.on('security-alert', payload => {
+    loadSecurityEvents();
+    const label = payload.type === 'ANOMALY_FLAT' ? 'Sensor Spoofing Detected' : 'Abnormal Spike Detected';
+    showToast(label, 'error');
+  });
+
+  // Telegram command setup
+  document.getElementById('linkCmd').innerText = '/link ' + deviceId;
+  
+  function copyCmd() {
+    const command = '/link ' + deviceId;
+    navigator.clipboard.writeText(command).then(() => {
+      // Update button
+      const btn = document.querySelector('.copy-button');
+      const btnText = document.getElementById('copyBtnText');
+      btn.classList.add('copied');
+      btnText.innerText = 'Copied!';
+      btn.querySelector('i').className = 'fas fa-check';
+      
+      // Show toast notification
+      showToast('Command copied to clipboard!');
+      
+      // Reset button after 2 seconds
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btnText.innerText = 'Copy Command';
+        btn.querySelector('i').className = 'fas fa-copy';
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy:', err);
+      showToast('Failed to copy. Please try again.', 'error');
+    });
+  }
+
+  function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerHTML = `
+      <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+      <span>${message}</span>
+    `;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+      toast.classList.add('hide');
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
+
+  // Add smooth transition to chart updates
+  document.getElementById('latest').style.transition = 'transform 0.2s ease-out';
+</script>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <p class="footer-text">
+        Made with <i class="fas fa-heart" style="color: #ef4444;"></i> by 
+        <span class="team-name">Darshan Tank</span>, 
+        <span class="team-name">Kanav Trivedi</span>, 
+        <span class="team-name">Tushar Surti</span>
+      </p>
+      <p class="footer-year">© 2025 IoT Gas Leakage Detection System</p>
+    </div>
+  </footer>
+</body>
+</html>

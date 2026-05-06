@@ -19,8 +19,8 @@
 #include <HMAC.h>
 
 // ─── Server endpoints ────────────────────────────────────────────────────────
-const char* serverRegisterUrl = "https://gas-leak-detection-iot.onrender.com/api/register";
-const char* serverGasUrl      = "https://gas-leak-detection-iot.onrender.com/api/gas";
+const char* serverRegisterUrl = "https://iot-gas-leakage-detector.onrender.com/api/register";
+const char* serverGasUrl      = "https://iot-gas-leakage-detector.onrender.com/api/gas";
 
 // ─── Hardware ────────────────────────────────────────────────────────────────
 const int gasPin    = A0;

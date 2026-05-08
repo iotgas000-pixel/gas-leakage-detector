@@ -149,11 +149,6 @@ function verifyHMAC(apiKey, message, signature) {
 function detectAnomaly(lastReadings, newValue) {
   if (lastReadings.length < 8) return null;
 
-  // Flat readings: stdDev < 5 and new value also flat — possible sensor spoofing
-  const avg = lastReadings.reduce((a, b) => a + b, 0) / lastReadings.length;
-  const variance = lastReadings.reduce((s, v) => s + Math.pow(v - avg, 2), 0) / lastReadings.length;
-  if (Math.sqrt(variance) < 2 && Math.abs(newValue - avg) < 2) return 'ANOMALY_FLAT';
-
   // Sudden spike: impossible jump > 300 PPM in one reading interval
   const lastValue = lastReadings[lastReadings.length - 1];
   if (Math.abs(newValue - lastValue) > 300) return 'ANOMALY_SPIKE';

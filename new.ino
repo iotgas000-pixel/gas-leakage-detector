@@ -159,7 +159,7 @@ bool sendReading(int gasValue) {
   HTTPClient http;
   http.begin(client, serverGasUrl);
   http.addHeader("Content-Type", "application/json");
-  http.setTimeout(8000);
+  http.setTimeout(15000);
 
   String body = "{\"deviceId\":\"" + deviceId + "\","
               + "\"value\":"      + String(gasValue) + ","
@@ -196,6 +196,7 @@ void setup() {
 
   WiFiManager wm;
   wm.setConnectTimeout(30);
+  wm.setConfigPortalTimeout(60);
   if (!wm.autoConnect("GasSensor-Setup")) {
     Serial.println("WiFiManager failed, restarting...");
     delay(2000);
@@ -274,7 +275,7 @@ void loop() {
     int gasValue = analogRead(gasPin);
     Serial.print("Gas: "); Serial.println(gasValue);
 
-    const int gasThreshold = 400;
+    const int gasThreshold = 250;
     if (gasValue > gasThreshold) {
       Serial.println("HIGH gas — buzzer on");
       for (int i = 0; i < 3; i++) {

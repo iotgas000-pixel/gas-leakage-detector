@@ -152,7 +152,7 @@ function detectAnomaly(lastReadings, newValue) {
   // Flat readings: stdDev < 5 and new value also flat — possible sensor spoofing
   const avg = lastReadings.reduce((a, b) => a + b, 0) / lastReadings.length;
   const variance = lastReadings.reduce((s, v) => s + Math.pow(v - avg, 2), 0) / lastReadings.length;
-  if (Math.sqrt(variance) < 5 && Math.abs(newValue - avg) < 5) return 'ANOMALY_FLAT';
+  if (Math.sqrt(variance) < 2 && Math.abs(newValue - avg) < 2) return 'ANOMALY_FLAT';
 
   // Sudden spike: impossible jump > 300 PPM in one reading interval
   const lastValue = lastReadings[lastReadings.length - 1];

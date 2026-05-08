@@ -179,10 +179,10 @@ mongoose.connect(MONGO_URL, { useNewUrlParser: true, useUnifiedTopology: true })
 let bot = null;
 if (TELEGRAM_BOT_TOKEN) {
   bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: false });
-  bot.deleteWebhook().then(() => {
+  setTimeout(() => {
     bot.startPolling();
     console.log('Telegram bot active (polling).');
-  }).catch(err => console.error('Telegram webhook delete error', err));
+  }, 5000);
   bot.onText(/\/link (.+)/, async (msg, match) => {
     const chatId = msg.chat.id.toString();
     const deviceId = match[1].trim();
